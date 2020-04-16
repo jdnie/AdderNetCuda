@@ -81,7 +81,8 @@ class Adder2dFunction(Function):
         padding = int(padding)
         if ctx.needs_input_grad[0]:
             x_ = x.permute(0, 2, 3, 1).contiguous() # N Hi Wi Ci
-            w_ = w.permute(1, 0, 2, 3).contiguous() # Ci Co Kh Kw
+            w_ = w.flip([2,3])
+            w_ = w_.permute(1, 0, 2, 3).contiguous() # Ci Co Kh Kw
 
             grad_x = torch.zeros_like(x_, device=torch.device('cuda:0'))
 

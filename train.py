@@ -8,6 +8,7 @@ import torchvision.models as models
 import resnet20
 import resnet50
 from utils import AverageMeter, accuracy
+import math
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--dataset', type=str, default='cifar10', choices=['cifar10','ImageNet'])
@@ -28,8 +29,7 @@ parser.add_argument('-b', '--batch-size', default=256, type=int,
 parser.add_argument('--data_dir', type=str,
                     help='path to dataset',default="/home/nie/f/dataset/cifar10/")
 parser.add_argument('--pretrain', type=str,
-                    default="output/epoch_186_loss_1.269.pth",
-                    # default="",
+                    default="",
                     help='path to pretrained model')
 parser.add_argument('--model_dir', type=str,
                     help='path to save model',default="output")
@@ -55,11 +55,27 @@ def main():
     
     criterion = torch.nn.CrossEntropyLoss().cuda(args.gpu)
     
-    # optimizer = torch.optim.Adam(model.parameters(), args.lr)
-    optimizer = torch.optim.SGD(model.parameters(), args.lr, momentum=0.9)
+    model_other_params = []
+    params_dict = []
+    eta = 50
+    for name, param in model.named_parameters():
+        if 'adder' in name:
+            k = 1
+            for s in param.shape:
+                k *= s
+            k = math.sqrt(k)
+            params_dict.append({"params": [param], 'lr': args.lr * eta / k})
+        else:
+            model_other_params.append(param)
+    params_dict.append({"params": model_other_params, 'lr': args.lr})
 
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-        milestones=[80, 120, 160, 180], last_epoch=-1)
+    # optimizer = torch.optim.Adam(model.parameters(), args.lr)
+    # optimizer = torch.optim.SGD(model.parameters(), args.lr, momentum=0.9, weight_decay=5e-4)
+    optimizer = torch.optim.SGD(params_dict, args.lr, momentum=0.9, weight_decay=5e-4)
+
+    # lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
+    #     milestones=[80, 120, 160, 180], last_epoch=-1)
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20)
 
     if args.dataset == 'cifar10':
         train_dataset = datasets.CIFAR10(
@@ -126,6 +142,7 @@ def main():
             input = input.cuda(args.gpu, non_blocking=True)
             target = target.cuda(args.gpu, non_blocking=True)
 
+            optimizer.zero_grad()
             output = model(input)
             loss = criterion(output, target)
 
@@ -134,7 +151,6 @@ def main():
             top1_train.update(acc1[0], input.size(0))
             top5_train.update(acc5[0], input.size(0))
 
-            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
